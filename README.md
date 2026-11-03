@@ -35,7 +35,7 @@ bamby --input 'cells.bam' --output 'grouped.bam' --tag CB
 
 ## Per-Cell Variant Calling Example
 
-`bcftools mpileup` reports each read group's sample as its own column, so every cell is called at once with no per-cell BAMs to split, sort, and merge:
+Call every cell at once, with no per-cell BAMs to split and merge:
 
 ```bash
 bamby \
