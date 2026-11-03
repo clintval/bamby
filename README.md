@@ -49,10 +49,12 @@ bamby \
 bcftools mpileup \
     --fasta-ref 'ref.fa' \
     --annotate AD,DP \
+    --max-depth 1000000 \
     --per-sample-mF \
     'grouped.bam' \
     | bcftools call \
         --multiallelic-caller \
+        --variants-only \
         --group-samples - \
         --output-type z \
         --output 'cells.vcf.gz'
