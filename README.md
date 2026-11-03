@@ -1,4 +1,6 @@
-# bamby
+![Banner for bamby](https://raw.githubusercontent.com/clintval/bamby/main/.github/img/bamby_banner.svg)
+
+---
 
 [![Install with bioconda](https://img.shields.io/badge/Install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/recipes/bamby/README.html)
 [![Anaconda Version](https://anaconda.org/bioconda/bamby/badges/version.svg)](http://bioconda.github.io/recipes/bamby/README.html)
@@ -17,22 +19,32 @@ pixi exec \
     bamby --help
 ```
 
+## Introduction
+
+The tool `bamby` gives every distinct value of a SAM tag its own read group, so any tool that works per read group or per sample sees one sample per value.
+Group single-cell reads by cell barcode, pooled reads by sample barcode, or consensus reads by molecule, all in one BAM instead of one file per value.
+
+Similar tools:
+
+- [`samtools split -d TAG`](https://www.htslib.org/doc/samtools-split.html): writes one file per tag value
+- [`sinto tagtorg`](https://timoast.github.io/sinto/): adds read groups from a tag, in Python
+
 ## Quick Start
 
-Give every cell barcode in `CB` its own read group:
+Give every cell barcode in the `CB` tag its own read group:
 
 ```bash
-bamby -i cells.bam -o grouped.bam
+bamby -i cells.bam -o grouped.bam -t CB
 ```
 
-Every tool that works per read group or per sample now sees one sample per cell, with no need to split the BAM into one file per cell.
-For example, `bcftools mpileup` reports each cell as its own sample column:
+Call variants in every cell at once: `bcftools mpileup` reports each read group's sample as its own column, with no per-cell BAMs to split, sort, and merge:
 
 ```bash
 bamby -i cells.bam -o - -t CB --drop-untagged -l 0 \
 | samtools sort --write-index -o grouped.bam##idx##grouped.bam.bai
 
-bcftools mpileup -f ref.fa -a AD,DP grouped.bam | bcftools call -m -G - -Oz -o cells.vcf.gz
+bcftools mpileup -f ref.fa -a AD,DP --per-sample-mF grouped.bam \
+| bcftools call -m -G - -Oz -o cells.vcf.gz
 ```
 
 ## How It Works
@@ -44,7 +56,7 @@ Each new read group is named for the record's read group and the tag value:
 
 | Field | Value |
 | --- | --- |
-| `ID` | The record's read group and the value, joined by a period (`A.AACGTT`), or the value alone when the record has no read group. |
+| `ID` | `<RG>.<value>` (`A.AACGTT`), or `<value>` without a read group. |
 | `SM` | The value. |
 | Others | Every other field (`LB`, `PL`, `PU`, ...) copied from the record's read group. |
 
@@ -52,18 +64,6 @@ Records without the tag keep their read group, or are dropped with `--drop-untag
 A read group that no written record uses any more is removed from the header, and new read groups are listed in sorted order.
 String, character, hex, and integer tags can name read groups; float and array tags cannot.
 
-## Options
+## Development and Testing
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `-i`, `--input` | | Input BAM, read twice, so it must be a file. |
-| `-o`, `--output` | | Output BAM, or `-` for standard output. |
-| `-t`, `--tag` | `CB` | The tag whose values name the read groups. |
-| `-d`, `--drop-untagged` | | Drop records without the tag. |
-| `-@`, `--threads` | `1` | BGZF worker threads, for reading and again for writing. |
-| `-l`, `--compression-level` | `6` | BGZF compression level of the output, from 0 (none) to 12 (best). |
-
-## Related Tools
-
-- [`samtools split -d TAG`](https://www.htslib.org/doc/samtools-split.html) writes one file per tag value.
-- [`sinto tagtorg`](https://timoast.github.io/sinto/) does the same job in Python.
+See the [contributing guide](./CONTRIBUTING.md) for more information.
