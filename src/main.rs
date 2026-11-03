@@ -67,8 +67,8 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 ///
 /// EXAMPLES
 ///
-///   bamby -i in.bam -o out.bam -t CB
-///   bamby -i in.bam -o - -t CB -d -l 0 | samtools sort -o sorted.bam
+///   bamby --input 'in.bam' --output 'out.bam' --tag CB
+///   bamby --input 'in.bam' --output - --tag CB --compression-level 0 | samtools sort -o 'sorted.bam'
 #[derive(Debug, Parser)]
 #[command(
     author,

@@ -15,7 +15,8 @@ Install with mamba, conda, or run directly with pixi:
 
 ```bash
 pixi exec \
-    -c conda-forge -c bioconda \
+    --channel conda-forge \
+    --channel bioconda \
     bamby --help
 ```
 
@@ -29,19 +30,32 @@ Group single-cell reads by cell barcode, pooled reads by sample barcode, or cons
 Give every cell barcode in the `CB` tag its own read group:
 
 ```bash
-bamby -i cells.bam -o grouped.bam -t CB
+bamby --input 'cells.bam' --output 'grouped.bam' --tag CB
 ```
 
-## Per-Cell Variant Calling
+## Per-Cell Variant Calling Example
 
 `bcftools mpileup` reports each read group's sample as its own column, so every cell is called at once with no per-cell BAMs to split, sort, and merge:
 
 ```bash
-bamby -i cells.bam -o - -t CB --drop-untagged -l 0 \
-    | samtools sort --write-index -o grouped.bam##idx##grouped.bam.bai -
+bamby \
+    --input 'cells.bam' \
+    --output - \
+    --tag CB \
+    --drop-untagged \
+    --compression-level 0 \
+    | samtools sort --write-index -o 'grouped.bam##idx##grouped.bam.bai' -
 
-bcftools mpileup -f ref.fa -a AD,DP --per-sample-mF grouped.bam \
-    | bcftools call -m -G - -Oz -o cells.vcf.gz
+bcftools mpileup \
+    --fasta-ref 'ref.fa' \
+    --annotate AD,DP \
+    --per-sample-mF \
+    'grouped.bam' \
+    | bcftools call \
+        --multiallelic-caller \
+        --group-samples - \
+        --output-type z \
+        --output 'cells.vcf.gz'
 ```
 
 ## Development and Testing
