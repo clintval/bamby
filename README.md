@@ -24,11 +24,6 @@ pixi exec \
 The tool `bamby` gives every distinct value of a SAM tag its own read group, so any tool that works per read group or per sample sees one sample per value.
 Group single-cell reads by cell barcode, pooled reads by sample barcode, or consensus reads by molecule, all in one BAM instead of one file per value.
 
-Similar tools:
-
-- [`samtools split -d TAG`](https://www.htslib.org/doc/samtools-split.html): writes one file per tag value
-- [`sinto tagtorg`](https://timoast.github.io/sinto/): adds read groups from a tag, in Python
-
 ## Quick Start
 
 Give every cell barcode in the `CB` tag its own read group:
@@ -39,7 +34,7 @@ bamby -i cells.bam -o grouped.bam -t CB
 
 ## Per-Cell Variant Calling
 
-Call variants in every cell at once: `bcftools mpileup` reports each read group's sample as its own column, with no per-cell BAMs to split, sort, and merge:
+`bcftools mpileup` reports each read group's sample as its own column, so every cell is called at once with no per-cell BAMs to split, sort, and merge:
 
 ```bash
 bamby -i cells.bam -o - -t CB --drop-untagged -l 0 \
