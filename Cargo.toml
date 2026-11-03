@@ -1,0 +1,97 @@
+[package]
+name = "bamby"
+version = "0.1.0"
+authors = ["Clint Valentine <valentine.clint@gmail.com>"]
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/clintval/bamby"
+description = "Group BAM records into read groups by the value of a tag."
+categories = ["command-line-utilities", "science"]
+keywords = ["bioinformatics", "SAM", "BAM", "single-cell", "read-group"]
+exclude = [".github/", "pixi.lock", "pixi.toml"]
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+
+# Distribution builds: the release settings plus no debug info and a stripped binary.
+[profile.dist]
+inherits = "release"
+codegen-units = 1
+lto = "fat"
+debug = 0
+incremental = false
+strip = true
+
+[lib]
+name = "bamby"
+path = "src/lib/mod.rs"
+
+[[bin]]
+name = "bamby"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+bstr = "1"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+env_logger = "0.11"
+log = "0.4"
+mimalloc = "0.1"
+noodles = { version = "0.116", features = ["bam", "bgzf", "core", "sam"] }
+noodles-bgzf = { version = "0.51", features = ["libdeflate"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+clap = { version = "4", features = ["derive"] }
+predicates = "3"
+pretty_assertions = "1"
+rstest = "0.26"
+tempfile = "3"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+similar_names = "allow"
+
+[package.metadata.git-cliff.changelog]
+header = ""
+trim = true
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+    ## {{ group | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first }} ({{ commit.id | truncate(length=8, end="") }})\
+    {% endfor %}
+{% endfor %}\n
+"""
+
+[package.metadata.git-cliff.git]
+conventional_commits = true
+commit_parsers = [
+    { message = "^[a-z]+(\\(.+\\))?!:", group = "Breaking" },
+    { message = "^security*", group = "Security" },
+    { message = "^feat*", group = "Features" },
+    { message = "^fix*", group = "Bug Fixes" },
+    { message = "^docs*", group = "Documentation" },
+    { message = "^perf*", group = "Performance" },
+    { message = "^refactor*", group = "Refactor" },
+    { message = "^style*", group = "Styling" },
+    { message = "^test*", group = "Testing" },
+    { message = "^build*", group = "Build" },
+    { message = "^ci", group = "Continuous Integration" },
+    { message = "^revert*", group = "Reverts" },
+    { message = "^chore\\(release\\):*", skip = true },
+    { message = "^chore\\(deps\\)", skip = true },
+    { message = "^chore*", group = "Miscellaneous Tasks" },
+    { body = ".*security", group = "Security" },
+]
+filter_commits = false

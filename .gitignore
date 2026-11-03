@@ -1,0 +1,15 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# rust / cargo
+/target/
+
+# macOS
+.DS_Store
+
+# claude code
+.claude/*
+
+# editor settings
+/.vscode/
