@@ -37,32 +37,17 @@ Give every cell barcode in the `CB` tag its own read group:
 bamby -i cells.bam -o grouped.bam -t CB
 ```
 
+## Per-Cell Variant Calling
+
 Call variants in every cell at once: `bcftools mpileup` reports each read group's sample as its own column, with no per-cell BAMs to split, sort, and merge:
 
 ```bash
 bamby -i cells.bam -o - -t CB --drop-untagged -l 0 \
-| samtools sort --write-index -o grouped.bam##idx##grouped.bam.bai
+    | samtools sort --write-index -o grouped.bam##idx##grouped.bam.bai -
 
 bcftools mpileup -f ref.fa -a AD,DP --per-sample-mF grouped.bam \
-| bcftools call -m -G - -Oz -o cells.vcf.gz
+    | bcftools call -m -G - -Oz -o cells.vcf.gz
 ```
-
-## How It Works
-
-The input is read twice: once to learn every value of the tag and build the header, then again to write each record with its new `RG` tag.
-Records keep their order, so a coordinate-sorted input stays coordinate-sorted.
-
-Each new read group is named for the record's read group and the tag value:
-
-| Field | Value |
-| --- | --- |
-| `ID` | `<RG>.<value>` (`A.AACGTT`), or `<value>` without a read group. |
-| `SM` | The value. |
-| Others | Every other field (`LB`, `PL`, `PU`, ...) copied from the record's read group. |
-
-Records without the tag keep their read group, or are dropped with `--drop-untagged`.
-A read group that no written record uses any more is removed from the header, and new read groups are listed in sorted order.
-String, character, hex, and integer tags can name read groups; float and array tags cannot.
 
 ## Development and Testing
 
