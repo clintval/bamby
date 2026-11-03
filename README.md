@@ -44,14 +44,13 @@ bamby \
     --tag CB \
     --drop-untagged \
     --compression-level 0 \
-    | samtools sort --write-index -o 'grouped.bam##idx##grouped.bam.bai' -
-
-bcftools mpileup \
-    --fasta-ref 'ref.fa' \
-    --annotate AD,DP \
-    --max-depth 1000000 \
-    --per-sample-mF \
-    'grouped.bam' \
+    | samtools sort --output-fmt BAM,level=0 - \
+    | bcftools mpileup \
+        --fasta-ref 'ref.fa' \
+        --annotate AD,DP \
+        --max-depth 1000000 \
+        --per-sample-mF \
+        - \
     | bcftools call \
         --multiallelic-caller \
         --variants-only \
