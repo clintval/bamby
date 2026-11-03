@@ -132,6 +132,7 @@ fn test_every_value_gets_its_own_read_group() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
+        .args(["-t", "CB"])
         .assert()
         .success();
 
@@ -158,6 +159,7 @@ fn test_new_read_groups_copy_the_original_fields_and_take_the_value_as_sample() 
         .arg(&input)
         .arg("-o")
         .arg(&output)
+        .args(["-t", "CB"])
         .assert()
         .success();
 
@@ -178,7 +180,7 @@ fn test_drop_untagged_removes_the_records_and_their_unused_read_group() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .arg("--drop-untagged")
+        .args(["-t", "CB", "--drop-untagged"])
         .assert()
         .success();
 
@@ -223,7 +225,7 @@ fn test_output_to_standard_output() {
     let assert = bamby()
         .arg("-i")
         .arg(&input)
-        .args(["-o", "-", "-l", "0"])
+        .args(["-o", "-", "-t", "CB", "-l", "0"])
         .assert()
         .success();
 
@@ -243,6 +245,7 @@ fn test_threads_write_the_same_records() {
         .arg(&input)
         .arg("-o")
         .arg(&single)
+        .args(["-t", "CB"])
         .assert()
         .success();
     bamby()
@@ -250,7 +253,7 @@ fn test_threads_write_the_same_records() {
         .arg(&input)
         .arg("-o")
         .arg(&multi)
-        .args(["-@", "4"])
+        .args(["-t", "CB", "-@", "4"])
         .assert()
         .success();
 
@@ -286,6 +289,7 @@ fn test_the_run_is_recorded_as_one_program_following_the_last() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
+        .args(["-t", "CB"])
         .assert()
         .success();
 
@@ -309,7 +313,7 @@ fn test_the_run_is_recorded_as_one_program_following_the_last() {
 #[test]
 fn test_standard_input_is_rejected() {
     bamby()
-        .args(["-i", "-", "-o", "out.bam"])
+        .args(["-i", "-", "-o", "out.bam", "-t", "CB"])
         .assert()
         .failure()
         .stderr(contains("must be a file"));
@@ -331,6 +335,7 @@ fn test_a_float_tag_is_an_error() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
+        .args(["-t", "CB"])
         .assert()
         .failure()
         .stderr(contains("float tag value"));
@@ -345,7 +350,22 @@ fn test_a_missing_input_is_an_error() {
         .arg(dir.path().join("missing.bam"))
         .arg("-o")
         .arg(dir.path().join("out.bam"))
+        .args(["-t", "CB"])
         .assert()
         .failure()
         .stderr(contains("cannot open"));
+}
+
+#[test]
+fn test_the_tag_is_required() {
+    let (dir, input) = fixture();
+
+    bamby()
+        .arg("-i")
+        .arg(&input)
+        .arg("-o")
+        .arg(dir.path().join("out.bam"))
+        .assert()
+        .failure()
+        .stderr(contains("--tag <TAG>"));
 }

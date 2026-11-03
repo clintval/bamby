@@ -56,8 +56,7 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 ///
 /// READ GROUPS
 ///
-///   ID    the record's read group and the value, joined by a period
-///         (`A.AACGTT`), or the value alone when the record has none
+///   ID    `<RG>.<value>` (`A.AACGTT`), or `<value>` without a read group
 ///   SM    the value
 ///   rest  every other field (`LB`, `PL`, `PU`, ...) copied from the
 ///         record's read group
@@ -68,7 +67,7 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 ///
 /// EXAMPLES
 ///
-///   bamby -i in.bam -o out.bam
+///   bamby -i in.bam -o out.bam -t CB
 ///   bamby -i in.bam -o - -t CB -d -l 0 | samtools sort -o sorted.bam
 #[derive(Debug, Parser)]
 #[command(
@@ -91,15 +90,9 @@ struct Cli {
     #[arg(short = 'o', long, value_name = "BAM", verbatim_doc_comment)]
     output: PathBuf,
 
-    /// The tag whose values name the read groups.
-    #[arg(
-        short = 't',
-        long,
-        value_name = "TAG",
-        default_value = "CB",
-        value_parser = tag,
-        verbatim_doc_comment
-    )]
+    /// The tag whose values name the read groups, such as `CB` for cell
+    /// barcodes.
+    #[arg(short = 't', long, value_name = "TAG", value_parser = tag, verbatim_doc_comment)]
     tag: Tag,
 
     /// Drop records without the tag instead of keeping their read group.
