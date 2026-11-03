@@ -50,9 +50,10 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 /// bamby gives every distinct value of a tag, such as the cell barcode in
 /// `CB`, a read group of its own, so tools that work per read group or per
 /// sample see one sample per value: one BAM holds every cell, and
-/// `bcftools mpileup` reports each cell as its own sample. The input is read
+/// `bcftools mpileup` reports each cell as its own sample. A file is read
 /// twice: once to learn every value and build the header, then again to write
-/// each record with its new `RG` tag.
+/// each record with its new `RG` tag. Standard input or a pipe is copied to a
+/// temporary file on the first pass.
 ///
 /// READ GROUPS
 ///
@@ -67,8 +68,8 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 ///
 /// EXAMPLES
 ///
-///   bamby --input 'in.bam' --output 'out.bam' --tag CB
-///   bamby --input 'in.bam' --output - --tag CB --compression-level 0 | samtools sort -o 'sorted.bam'
+///   bamby --tag CB --output 'out.bam' 'in.bam'
+///   bamby --tag CB --compression-level 0 'in.bam' | samtools sort -o 'sorted.bam'
 #[derive(Debug, Parser)]
 #[command(
     author,
@@ -80,14 +81,18 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 )]
 #[clap(styles = CARGO_STYLING)]
 struct Cli {
-    /// Input BAM, in any order.
-    ///
-    /// Read twice, so it must be a file.
-    #[arg(short = 'i', long, value_name = "BAM", value_parser = file, verbatim_doc_comment)]
+    /// Input BAM in any order, or `-` for standard input.
+    #[arg(value_name = "BAM", default_value = "-", verbatim_doc_comment)]
     input: PathBuf,
 
-    /// Output BAM, in the input's order; `-` writes to standard output.
-    #[arg(short = 'o', long, value_name = "BAM", verbatim_doc_comment)]
+    /// Output BAM in the input's order, or `-` for standard output.
+    #[arg(
+        short = 'o',
+        long,
+        value_name = "BAM",
+        default_value = "-",
+        verbatim_doc_comment
+    )]
     output: PathBuf,
 
     /// The tag whose values name the read groups, such as `CB` for cell
@@ -121,13 +126,6 @@ struct Cli {
         verbatim_doc_comment
     )]
     compression_level: CompressionLevel,
-}
-
-fn file(text: &str) -> Result<PathBuf, String> {
-    match text {
-        "-" => Err("the input is read twice, so it must be a file, not standard input".into()),
-        _ => Ok(PathBuf::from(text)),
-    }
 }
 
 fn tag(text: &str) -> Result<Tag, String> {
@@ -387,12 +385,6 @@ mod tests {
             compression_level(text).ok().map(|level| level.get()),
             expected
         );
-    }
-
-    #[test]
-    fn test_file_rejects_standard_input() {
-        assert!(file("-").is_err());
-        assert!(file("in.bam").is_ok());
     }
 
     #[test]

@@ -13,9 +13,13 @@ use noodles_bgzf::io::writer::CompressionLevel;
 /// A decompressed BAM stream.
 pub type Reader = bam::io::Reader<Box<dyn Read>>;
 
-/// Open `path` for reading, decompressing with `threads` workers.
+/// Open `path`, or standard input when it is `-`, decompressing with `threads` workers.
 pub fn open(path: &Path, threads: NonZero<usize>) -> Result<Reader> {
-    let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    let file: Box<dyn Read + Send> = if path == Path::new("-") {
+        Box::new(io::stdin())
+    } else {
+        Box::new(File::open(path).with_context(|| format!("cannot open {}", path.display()))?)
+    };
     let inner: Box<dyn Read> = if threads.get() > 1 {
         Box::new(bgzf::io::MultithreadedReader::with_worker_count(
             threads, file,

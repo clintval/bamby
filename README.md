@@ -30,7 +30,7 @@ Group single-cell reads by cell barcode, pooled reads by sample barcode, or cons
 Give every cell barcode in the `CB` tag its own read group:
 
 ```bash
-bamby --input 'cells.bam' --output 'grouped.bam' --tag CB
+bamby --tag CB --output 'grouped.bam' 'cells.bam'
 ```
 
 ## Per-Cell Variant Calling Example
@@ -39,11 +39,10 @@ Call every cell at once, with no per-cell BAMs to split and merge:
 
 ```bash
 bamby \
-    --input 'cells.bam' \
-    --output - \
     --tag CB \
     --drop-untagged \
     --compression-level 0 \
+    'cells.bam' \
 | samtools sort --output-fmt BAM,level=0 - \
 | bcftools mpileup \
     --fasta-ref 'ref.fa' \

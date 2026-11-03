@@ -42,6 +42,7 @@ log = "0.4"
 mimalloc = "0.1"
 noodles = { version = "0.116", features = ["bam", "bgzf", "core", "sam"] }
 noodles-bgzf = { version = "0.51", features = ["libdeflate"] }
+tempfile = "3"
 
 [dev-dependencies]
 assert_cmd = "2"

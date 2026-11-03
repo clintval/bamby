@@ -3,8 +3,9 @@
 pub mod group;
 pub mod io;
 
+use std::fs;
 use std::num::NonZero;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use bstr::{BStr, BString};
@@ -21,13 +22,14 @@ use noodles::sam::header::record::value::map::program::tag::{
     COMMAND_LINE, NAME, PREVIOUS_PROGRAM_ID, VERSION,
 };
 use noodles_bgzf::io::writer::CompressionLevel;
+use tempfile::NamedTempFile;
 
 use crate::group::{Plan, read_group_id, value_text};
 
 /// What to group, where to read it from, and where to write it.
 #[derive(Clone, Debug)]
 pub struct Args {
-    /// The BAM to read; it is read twice, so it must be a file.
+    /// The BAM to read, or `-` for standard input.
     pub input: PathBuf,
     /// The BAM to write, or `-` for standard output.
     pub output: PathBuf,
@@ -82,16 +84,62 @@ fn tag_display(tag: Tag) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// Learn every read group the tag implies.
-fn plan(args: &Args) -> Result<(sam::Header, Plan)> {
+/// Where the second pass reads the records from.
+enum Source {
+    /// The input file itself, read a second time.
+    Input(PathBuf),
+    /// A copy of a stream that cannot be read twice.
+    Copy(NamedTempFile),
+}
+
+impl Source {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Input(path) => path,
+            Self::Copy(file) => file.path(),
+        }
+    }
+}
+
+/// Whether `path` names a regular file, which can be read twice.
+fn rereadable(path: &Path) -> bool {
+    path != Path::new("-") && fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
+}
+
+/// Learn every read group the tag implies, copying a stream as it goes so the
+/// records can be read again.
+fn plan(args: &Args) -> Result<(sam::Header, Plan, Source)> {
     let mut reader = io::open(&args.input, args.threads)?;
     let header = reader.read_header()?;
+    let mut copy = if rereadable(&args.input) {
+        None
+    } else {
+        let file = tempfile::Builder::new()
+            .prefix("bamby.")
+            .suffix(".bam")
+            .tempfile()
+            .context("cannot create a temporary file for the input stream")?;
+        let sink = io::Sink::create(file.path(), args.threads, CompressionLevel::FAST)?;
+        let mut writer = io::Writer::from(sink);
+        writer.write_header(&header)?;
+        Some((file, writer))
+    };
     let mut plan = Plan::default();
     let mut record = bam::Record::default();
     while reader.read_record(&mut record)? != 0 {
         plan.observe(original_read_group(&record)?, tag_text(&record, args.tag)?);
+        if let Some((_, writer)) = copy.as_mut() {
+            writer.write_record(&header, &record)?;
+        }
     }
-    Ok((header, plan))
+    let source = match copy {
+        Some((file, writer)) => {
+            writer.into_inner().finish()?;
+            Source::Copy(file)
+        }
+        None => Source::Input(args.input.clone()),
+    };
+    Ok((header, plan, source))
 }
 
 /// Add one `@PG` line for this run, following the last program in the header
@@ -118,11 +166,11 @@ fn add_program(header: &mut sam::Header, command_line: &str) -> Result<()> {
 
 /// Write every record into the read group of its tag value.
 pub fn run(args: &Args) -> Result<Summary> {
-    let (input_header, plan) = plan(args)?;
+    let (input_header, plan, source) = plan(args)?;
     let mut header = plan.header(&input_header, !args.drop_untagged)?;
     add_program(&mut header, &args.command_line)?;
 
-    let mut reader = io::open(&args.input, args.threads)?;
+    let mut reader = io::open(source.path(), args.threads)?;
     reader.read_header()?;
     let sink = io::Sink::create(&args.output, args.threads, args.compression_level)?;
     let mut writer = io::Writer::from(sink);

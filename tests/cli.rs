@@ -128,7 +128,6 @@ fn test_every_value_gets_its_own_read_group() {
     let output = dir.path().join("out.bam");
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -155,7 +154,6 @@ fn test_new_read_groups_copy_the_original_fields_and_take_the_value_as_sample() 
     let output = dir.path().join("out.bam");
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -176,7 +174,6 @@ fn test_drop_untagged_removes_the_records_and_their_unused_read_group() {
     let output = dir.path().join("out.bam");
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -205,7 +202,6 @@ fn test_records_without_a_read_group_are_named_by_value_alone() {
     );
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -223,7 +219,6 @@ fn test_output_to_standard_output() {
     let (_dir, input) = fixture();
 
     let assert = bamby()
-        .arg("-i")
         .arg(&input)
         .args(["-o", "-", "-t", "CB", "-l", "0"])
         .assert()
@@ -241,7 +236,6 @@ fn test_threads_write_the_same_records() {
     let multi = dir.path().join("multi.bam");
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&single)
@@ -249,7 +243,6 @@ fn test_threads_write_the_same_records() {
         .assert()
         .success();
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&multi)
@@ -285,7 +278,6 @@ fn test_the_run_is_recorded_as_one_program_following_the_last() {
     );
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -311,12 +303,27 @@ fn test_the_run_is_recorded_as_one_program_following_the_last() {
 }
 
 #[test]
-fn test_standard_input_is_rejected() {
+fn test_standard_input_is_copied_and_written_to_standard_output() {
+    let (dir, input) = fixture();
+    let output = dir.path().join("out.bam");
+
     bamby()
-        .args(["-i", "-", "-o", "out.bam", "-t", "CB"])
+        .arg(&input)
+        .args(["-t", "CB", "-o"])
+        .arg(&output)
         .assert()
-        .failure()
-        .stderr(contains("must be a file"));
+        .success();
+    let assert = bamby()
+        .args(["-t", "CB"])
+        .pipe_stdin(&input)
+        .unwrap()
+        .assert()
+        .success();
+
+    let (_, from_file) = read_bam(File::open(&output).unwrap());
+    let (header, from_stdin) = read_bam(Cursor::new(assert.get_output().stdout.clone()));
+    assert_eq!(read_group_ids(&header), vec!["A", "A.AAA", "A.TTT"]);
+    assert_eq!(from_stdin, from_file);
 }
 
 #[test]
@@ -331,7 +338,6 @@ fn test_a_float_tag_is_an_error() {
     );
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(&output)
@@ -346,7 +352,6 @@ fn test_a_missing_input_is_an_error() {
     let dir = TempDir::new().unwrap();
 
     bamby()
-        .arg("-i")
         .arg(dir.path().join("missing.bam"))
         .arg("-o")
         .arg(dir.path().join("out.bam"))
@@ -361,7 +366,6 @@ fn test_the_tag_is_required() {
     let (dir, input) = fixture();
 
     bamby()
-        .arg("-i")
         .arg(&input)
         .arg("-o")
         .arg(dir.path().join("out.bam"))
