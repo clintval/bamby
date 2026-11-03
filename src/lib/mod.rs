@@ -35,14 +35,28 @@ pub struct Args {
     pub output: PathBuf,
     /// The tag whose values name the read groups.
     pub tag: Tag,
-    /// Drop records without the tag instead of keeping their read group.
-    pub drop_untagged: bool,
+    /// What to do with records that lack the tag.
+    pub untagged: Untagged,
+    /// A value that records without the tag are grouped under instead.
+    pub untagged_value: Option<String>,
     /// BGZF worker threads for reading and for writing.
     pub threads: NonZero<usize>,
     /// BGZF compression level of the output.
     pub compression_level: CompressionLevel,
     /// The command line recorded in the output's `@PG` line.
     pub command_line: String,
+}
+
+/// What to do with a record that lacks the tag.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum Untagged {
+    /// Leave the record in its original read group.
+    Keep,
+    /// Omit the record from the output.
+    Drop,
+    /// Stop with an error at the first such record.
+    #[default]
+    Error,
 }
 
 /// Counts from one run.
@@ -77,6 +91,27 @@ fn tag_text(record: &bam::Record, tag: Tag) -> Result<Option<String>> {
             .with_context(|| format!("in the {} tag", tag_display(tag))),
         None => Ok(None),
     }
+}
+
+/// The value that names the record's read group: its tag, the fallback value
+/// for records without the tag, or none, unless untagged records are an error.
+fn group_value(record: &bam::Record, args: &Args) -> Result<Option<String>> {
+    if let Some(value) = tag_text(record, args.tag)? {
+        return Ok(Some(value));
+    }
+    if let Some(value) = &args.untagged_value {
+        return Ok(Some(value.clone()));
+    }
+    if args.untagged == Untagged::Error {
+        let name = record
+            .name()
+            .map_or_else(|| "*".to_string(), ToString::to_string);
+        bail!(
+            "the record {name} has no {} tag; pass --untagged keep or drop to allow it",
+            tag_display(args.tag)
+        );
+    }
+    Ok(None)
 }
 
 fn tag_display(tag: Tag) -> String {
@@ -127,7 +162,7 @@ fn plan(args: &Args) -> Result<(sam::Header, Plan, Source)> {
     let mut plan = Plan::default();
     let mut record = bam::Record::default();
     while reader.read_record(&mut record)? != 0 {
-        plan.observe(original_read_group(&record)?, tag_text(&record, args.tag)?);
+        plan.observe(original_read_group(&record)?, group_value(&record, args)?);
         if let Some((_, writer)) = copy.as_mut() {
             writer.write_record(&header, &record)?;
         }
@@ -167,7 +202,7 @@ fn add_program(header: &mut sam::Header, command_line: &str) -> Result<()> {
 /// Write every record into the read group of its tag value.
 pub fn run(args: &Args) -> Result<Summary> {
     let (input_header, plan, source) = plan(args)?;
-    let mut header = plan.header(&input_header, !args.drop_untagged)?;
+    let mut header = plan.header(&input_header, args.untagged == Untagged::Keep)?;
     add_program(&mut header, &args.command_line)?;
 
     let mut reader = io::open(source.path(), args.threads)?;
@@ -183,7 +218,7 @@ pub fn run(args: &Args) -> Result<Summary> {
     let mut record = bam::Record::default();
     while reader.read_record(&mut record)? != 0 {
         summary.records += 1;
-        match tag_text(&record, args.tag)? {
+        match group_value(&record, args)? {
             Some(value) => {
                 let id: BString = read_group_id(original_read_group(&record)?, &value);
                 let mut buf = RecordBuf::try_from_alignment_record(&input_header, &record)?;
@@ -191,7 +226,7 @@ pub fn run(args: &Args) -> Result<Summary> {
                 writer.write_alignment_record(&header, &buf)?;
                 summary.grouped += 1;
             }
-            None if args.drop_untagged => summary.dropped += 1,
+            None if args.untagged == Untagged::Drop => summary.dropped += 1,
             None => {
                 writer.write_alignment_record(&header, &record)?;
                 summary.kept += 1;

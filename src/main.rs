@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process;
 
 use anyhow::Error;
-use bamby::{Args, run};
+use bamby::{Args, Untagged, run};
 use clap::builder::styling::{AnsiColor, Effects, Style, Styles};
 use clap::{CommandFactory, FromArgMatches, Parser};
 use env_logger::Env;
@@ -62,9 +62,11 @@ pub(crate) const CARGO_STYLING: Styles = Styles::styled()
 ///   rest  every other field (`LB`, `PL`, `PU`, ...) copied from the
 ///         record's read group
 ///
-/// Records without the tag keep their read group, or are dropped with
-/// `--drop-untagged`. A read group no written record uses any more is removed
-/// from the header, and new read groups are listed in sorted order.
+/// A record without the tag is an error by default; `--untagged keep` leaves
+/// it in its read group, `--untagged drop` omits it, and `--untagged-value`
+/// groups it under a value of its own. A read group no written record uses any
+/// more is removed from the header, and new read groups are listed in sorted
+/// order.
 ///
 /// EXAMPLES
 ///
@@ -100,9 +102,26 @@ struct Cli {
     #[arg(short = 't', long, value_name = "TAG", value_parser = tag, verbatim_doc_comment)]
     tag: Tag,
 
-    /// Drop records without the tag instead of keeping their read group.
-    #[arg(short = 'd', long, verbatim_doc_comment)]
-    drop_untagged: bool,
+    /// What to do with records that lack the tag.
+    ///
+    ///   error  stop at the first such record
+    ///   keep   leave the record in its original read group
+    ///   drop   omit the record
+    #[arg(
+        short = 'u',
+        long,
+        value_enum,
+        value_name = "ACTION",
+        default_value_t = Untagged::Error,
+        hide_possible_values = true,
+        verbatim_doc_comment
+    )]
+    untagged: Untagged,
+
+    /// Group records that lack the tag under this value instead, as in
+    /// `A.unassigned`.
+    #[arg(long, value_name = "VALUE", conflicts_with = "untagged", value_parser = untagged_value, verbatim_doc_comment)]
+    untagged_value: Option<String>,
 
     /// BGZF worker threads, for reading and again for writing.
     #[arg(
@@ -138,6 +157,16 @@ fn tag(text: &str) -> Result<Tag, String> {
         Err(format!(
             "a SAM tag is a letter then a letter or digit, like CB, not {text:?}"
         ))
+    }
+}
+
+fn untagged_value(text: &str) -> Result<String, String> {
+    if text.is_empty() || text.contains(char::is_whitespace) {
+        Err(format!(
+            "a read group value is a non-empty word, not {text:?}"
+        ))
+    } else {
+        Ok(text.to_string())
     }
 }
 
@@ -334,7 +363,8 @@ fn main() -> Result<(), Error> {
         input: cli.input,
         output: cli.output,
         tag: cli.tag,
-        drop_untagged: cli.drop_untagged,
+        untagged: cli.untagged,
+        untagged_value: cli.untagged_value,
         threads: cli.threads,
         compression_level: cli.compression_level,
         command_line: std::env::args().collect::<Vec<_>>().join(" "),

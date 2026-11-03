@@ -131,7 +131,7 @@ fn test_every_value_gets_its_own_read_group() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .success();
 
@@ -157,7 +157,7 @@ fn test_new_read_groups_copy_the_original_fields_and_take_the_value_as_sample() 
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .success();
 
@@ -169,7 +169,7 @@ fn test_new_read_groups_copy_the_original_fields_and_take_the_value_as_sample() 
 }
 
 #[test]
-fn test_drop_untagged_removes_the_records_and_their_unused_read_group() {
+fn test_untagged_drop_removes_the_records_and_their_unused_read_group() {
     let (dir, input) = fixture();
     let output = dir.path().join("out.bam");
 
@@ -177,7 +177,7 @@ fn test_drop_untagged_removes_the_records_and_their_unused_read_group() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .args(["-t", "CB", "--drop-untagged"])
+        .args(["-t", "CB", "--untagged", "drop"])
         .assert()
         .success();
 
@@ -220,7 +220,7 @@ fn test_output_to_standard_output() {
 
     let assert = bamby()
         .arg(&input)
-        .args(["-o", "-", "-t", "CB", "-l", "0"])
+        .args(["-o", "-", "-t", "CB", "--untagged", "keep", "-l", "0"])
         .assert()
         .success();
 
@@ -239,14 +239,14 @@ fn test_threads_write_the_same_records() {
         .arg(&input)
         .arg("-o")
         .arg(&single)
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .success();
     bamby()
         .arg(&input)
         .arg("-o")
         .arg(&multi)
-        .args(["-t", "CB", "-@", "4"])
+        .args(["-t", "CB", "--untagged", "keep", "-@", "4"])
         .assert()
         .success();
 
@@ -281,7 +281,7 @@ fn test_the_run_is_recorded_as_one_program_following_the_last() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .success();
 
@@ -309,12 +309,12 @@ fn test_standard_input_is_copied_and_written_to_standard_output() {
 
     bamby()
         .arg(&input)
-        .args(["-t", "CB", "-o"])
+        .args(["-t", "CB", "--untagged", "keep", "-o"])
         .arg(&output)
         .assert()
         .success();
     let assert = bamby()
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .pipe_stdin(&input)
         .unwrap()
         .assert()
@@ -341,7 +341,7 @@ fn test_a_float_tag_is_an_error() {
         .arg(&input)
         .arg("-o")
         .arg(&output)
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .failure()
         .stderr(contains("float tag value"));
@@ -355,7 +355,7 @@ fn test_a_missing_input_is_an_error() {
         .arg(dir.path().join("missing.bam"))
         .arg("-o")
         .arg(dir.path().join("out.bam"))
-        .args(["-t", "CB"])
+        .args(["-t", "CB", "--untagged", "keep"])
         .assert()
         .failure()
         .stderr(contains("cannot open"));
@@ -372,4 +372,61 @@ fn test_the_tag_is_required() {
         .assert()
         .failure()
         .stderr(contains("--tag <TAG>"));
+}
+
+#[test]
+fn test_an_untagged_record_is_an_error_by_default() {
+    let (dir, input) = fixture();
+
+    bamby()
+        .arg(&input)
+        .arg("-o")
+        .arg(dir.path().join("out.bam"))
+        .args(["-t", "CB"])
+        .assert()
+        .failure()
+        .stderr(contains("the record r4 has no CB tag"));
+}
+
+#[test]
+fn test_untagged_value_groups_untagged_records_under_their_own_value() {
+    let (dir, input) = fixture();
+    let output = dir.path().join("out.bam");
+
+    bamby()
+        .arg(&input)
+        .arg("-o")
+        .arg(&output)
+        .args(["-t", "CB", "--untagged-value", "unassigned"])
+        .assert()
+        .success();
+
+    let (header, records) = read_bam(File::open(&output).unwrap());
+    assert_eq!(
+        read_group_ids(&header),
+        vec!["A.AAA", "A.TTT", "A.unassigned"]
+    );
+    assert_eq!(
+        names_and_read_groups(&records),
+        pairs(&[
+            ("r1", "A.TTT"),
+            ("r2", "A.AAA"),
+            ("r3", "A.TTT"),
+            ("r4", "A.unassigned")
+        ])
+    );
+}
+
+#[test]
+fn test_untagged_value_conflicts_with_an_untagged_action() {
+    let (dir, input) = fixture();
+
+    bamby()
+        .arg(&input)
+        .arg("-o")
+        .arg(dir.path().join("out.bam"))
+        .args(["-t", "CB", "--untagged", "drop", "--untagged-value", "x"])
+        .assert()
+        .failure()
+        .stderr(contains("cannot be used with"));
 }

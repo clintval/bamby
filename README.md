@@ -40,7 +40,7 @@ Call every cell at once, with no per-cell BAMs to split and merge:
 ```bash
 bamby \
     --tag CB \
-    --drop-untagged \
+    --untagged drop \
     --compression-level 0 \
     'cells.bam' \
 | samtools sort --output-fmt BAM,level=0 - \
