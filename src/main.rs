@@ -123,7 +123,7 @@ struct Cli {
     #[arg(long, value_name = "VALUE", conflicts_with = "untagged", value_parser = untagged_value, verbatim_doc_comment)]
     untagged_value: Option<String>,
 
-    /// BGZF worker threads, for reading and again for writing.
+    /// Threads that decompress, group and compress records.
     #[arg(
         short = '@',
         long,

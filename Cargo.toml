@@ -3,7 +3,7 @@ name = "bamby"
 version = "0.2.0"
 authors = ["Clint Valentine <valentine.clint@gmail.com>"]
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.93"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/clintval/bamby"
@@ -38,10 +38,13 @@ anyhow = "1"
 bstr = "1"
 clap = { version = "4", features = ["derive", "wrap_help"] }
 env_logger = "0.11"
+fgumi-bgzf = "0.9.0"
+fgumi-raw-bam = "0.9.0"
 log = "0.4"
 mimalloc = "0.1"
 noodles = { version = "0.116", features = ["bam", "bgzf", "core", "sam"] }
 noodles-bgzf = { version = "0.51", features = ["libdeflate"] }
+rayon = "1"
 tempfile = "3"
 
 [dev-dependencies]

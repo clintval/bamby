@@ -5,30 +5,44 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Result, bail};
 use bstr::{BStr, BString, ByteSlice};
 use noodles::sam;
-use noodles::sam::alignment::record::data::field::Value;
 use noodles::sam::header::record::value::Map;
 use noodles::sam::header::record::value::map::ReadGroup;
 use noodles::sam::header::record::value::map::read_group::tag::SAMPLE;
 
-/// The text of a tag value used to name a read group, or an error for a type
-/// that has no single text form (floats and arrays).
-pub fn value_text(value: &Value<'_>) -> Result<String> {
-    let text = match value {
-        Value::String(text) | Value::Hex(text) => text.to_str_lossy().into_owned(),
-        Value::Character(c) => char::from(*c).to_string(),
-        Value::Int8(n) => n.to_string(),
-        Value::UInt8(n) => n.to_string(),
-        Value::Int16(n) => n.to_string(),
-        Value::UInt16(n) => n.to_string(),
-        Value::Int32(n) => n.to_string(),
-        Value::UInt32(n) => n.to_string(),
-        Value::Float(_) => bail!("a float tag value cannot name a read group"),
-        Value::Array(_) => bail!("an array tag value cannot name a read group"),
+/// The text of a raw tag value, of type `kind`, used to name a read group, or
+/// an error for a type that has no single text form (floats and arrays).
+pub fn value_text(kind: u8, bytes: &[u8]) -> Result<String> {
+    let text = match kind {
+        b'Z' | b'H' => bytes
+            .strip_suffix(&[0])
+            .unwrap_or(bytes)
+            .to_str_lossy()
+            .into_owned(),
+        b'A' => char::from(fixed::<1>(bytes)?[0]).to_string(),
+        b'c' => i8::from_le_bytes(fixed(bytes)?).to_string(),
+        b'C' => u8::from_le_bytes(fixed(bytes)?).to_string(),
+        b's' => i16::from_le_bytes(fixed(bytes)?).to_string(),
+        b'S' => u16::from_le_bytes(fixed(bytes)?).to_string(),
+        b'i' => i32::from_le_bytes(fixed(bytes)?).to_string(),
+        b'I' => u32::from_le_bytes(fixed(bytes)?).to_string(),
+        b'f' => bail!("a float tag value cannot name a read group"),
+        b'B' => bail!("an array tag value cannot name a read group"),
+        _ => bail!(
+            "a tag of type {} cannot name a read group",
+            char::from(kind)
+        ),
     };
     if text.is_empty() {
         bail!("an empty tag value cannot name a read group");
     }
     Ok(text)
+}
+
+fn fixed<const N: usize>(bytes: &[u8]) -> Result<[u8; N]> {
+    match bytes.get(..N) {
+        Some(head) => Ok(head.try_into()?),
+        None => bail!("a tag value is shorter than its type"),
+    }
 }
 
 /// The ID of the read group for `value`: the record's original read group and
@@ -154,20 +168,25 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Value::String(b"AAC-GTT".as_bstr()), "AAC-GTT")]
-    #[case(Value::Hex(b"CAFE".as_bstr()), "CAFE")]
-    #[case(Value::Character(b'x'), "x")]
-    #[case(Value::Int8(-3), "-3")]
-    #[case(Value::UInt16(7), "7")]
-    #[case(Value::UInt32(4_000_000_000), "4000000000")]
-    fn test_value_text_formats_scalar_values(#[case] value: Value<'_>, #[case] expected: &str) {
-        assert_eq!(value_text(&value).unwrap(), expected);
+    #[case(b'Z', b"AAC-GTT\0".to_vec(), "AAC-GTT")]
+    #[case(b'H', b"CAFE\0".to_vec(), "CAFE")]
+    #[case(b'A', b"x".to_vec(), "x")]
+    #[case(b'c', (-3i8).to_le_bytes().to_vec(), "-3")]
+    #[case(b'S', 7u16.to_le_bytes().to_vec(), "7")]
+    #[case(b'I', 4_000_000_000u32.to_le_bytes().to_vec(), "4000000000")]
+    fn test_value_text_formats_scalar_values(
+        #[case] kind: u8,
+        #[case] bytes: Vec<u8>,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(value_text(kind, &bytes).unwrap(), expected);
     }
 
     #[test]
-    fn test_value_text_rejects_floats_and_empty_strings() {
-        assert!(value_text(&Value::Float(1.5)).is_err());
-        assert!(value_text(&Value::String(b"".as_bstr())).is_err());
+    fn test_value_text_rejects_floats_arrays_and_empty_strings() {
+        assert!(value_text(b'f', &1.5f32.to_le_bytes()).is_err());
+        assert!(value_text(b'B', b"C\x01\x00\x00\x00\x07").is_err());
+        assert!(value_text(b'Z', b"\0").is_err());
     }
 
     #[test]
