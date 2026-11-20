@@ -247,11 +247,11 @@ fn plan(args: &Args, pool: &ThreadPool) -> Result<(sam::Header, Plan, GroupIds, 
                 if let Entry::Vacant(slot) = ids.entry(key) {
                     let original = original.as_ref().map(|id| id.as_bstr());
                     slot.insert(read_group_id(original, &text));
-                    plan.observe(original, Some(text));
+                    plan.observe(original, Some(text))?;
                 }
             }
             for original in run.untagged {
-                plan.observe(original.as_ref().map(|id| id.as_bstr()), None);
+                plan.observe(original.as_ref().map(|id| id.as_bstr()), None)?;
             }
         }
     }

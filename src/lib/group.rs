@@ -74,20 +74,30 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// Record one record carrying `value` (or no value) under `original`.
-    pub fn observe(&mut self, original: Option<&BStr>, value: Option<String>) {
-        match value {
-            Some(value) => {
-                let id = read_group_id(original, &value);
-                self.assignments.entry(id).or_insert_with(|| Assignment {
-                    original: original.map(BString::from),
-                    value,
-                });
-            }
-            None => {
-                self.untagged.insert(original.map(BString::from));
-            }
+    /// Record one record carrying `value` (or no value) under `original`, or an
+    /// error when another value already has the same read group ID.
+    pub fn observe(&mut self, original: Option<&BStr>, value: Option<String>) -> Result<()> {
+        let Some(value) = value else {
+            self.untagged.insert(original.map(BString::from));
+            return Ok(());
+        };
+        let id = read_group_id(original, &value);
+        let assignment = Assignment {
+            original: original.map(BString::from),
+            value,
+        };
+        let existing = self
+            .assignments
+            .entry(id.clone())
+            .or_insert_with(|| assignment.clone());
+        if *existing != assignment {
+            bail!(
+                "the tag values {} and {} would share the read group {id}",
+                existing.value,
+                assignment.value
+            );
         }
+        Ok(())
     }
 
     /// The number of read groups the tag values create.
@@ -199,9 +209,12 @@ mod tests {
     fn test_header_declares_one_read_group_per_value_in_sorted_order() {
         let input = header_with_read_groups(&["A"]);
         let mut plan = Plan::default();
-        plan.observe(Some(b"A".as_bstr()), Some("TTT".into()));
-        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()));
-        plan.observe(Some(b"A".as_bstr()), Some("TTT".into()));
+        plan.observe(Some(b"A".as_bstr()), Some("TTT".into()))
+            .unwrap();
+        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()))
+            .unwrap();
+        plan.observe(Some(b"A".as_bstr()), Some("TTT".into()))
+            .unwrap();
 
         let header = plan.header(&input, true).unwrap();
 
@@ -213,7 +226,8 @@ mod tests {
     fn test_header_copies_the_original_fields_and_sets_the_sample() {
         let input = header_with_read_groups(&["A"]);
         let mut plan = Plan::default();
-        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()));
+        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()))
+            .unwrap();
 
         let header = plan.header(&input, true).unwrap();
         let map = header.read_groups().get(b"A.AAA".as_bstr()).unwrap();
@@ -227,8 +241,9 @@ mod tests {
     fn test_header_keeps_an_original_read_group_only_while_untagged_records_use_it() {
         let input = header_with_read_groups(&["A", "B"]);
         let mut plan = Plan::default();
-        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()));
-        plan.observe(Some(b"B".as_bstr()), None);
+        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()))
+            .unwrap();
+        plan.observe(Some(b"B".as_bstr()), None).unwrap();
 
         assert_eq!(ids(&plan.header(&input, true).unwrap()), vec!["B", "A.AAA"]);
         assert_eq!(ids(&plan.header(&input, false).unwrap()), vec!["A.AAA"]);
@@ -238,7 +253,7 @@ mod tests {
     fn test_header_names_values_of_records_without_a_read_group_by_value_alone() {
         let input = sam::Header::default();
         let mut plan = Plan::default();
-        plan.observe(None, Some("AAA".into()));
+        plan.observe(None, Some("AAA".into())).unwrap();
 
         let header = plan.header(&input, true).unwrap();
         let map = header.read_groups().get(b"AAA".as_bstr()).unwrap();
@@ -251,11 +266,28 @@ mod tests {
     fn test_header_rejects_a_new_read_group_that_collides_with_a_kept_one() {
         let input = header_with_read_groups(&["A.AAA", "A"]);
         let mut plan = Plan::default();
-        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()));
-        plan.observe(Some(b"A.AAA".as_bstr()), None);
+        plan.observe(Some(b"A".as_bstr()), Some("AAA".into()))
+            .unwrap();
+        plan.observe(Some(b"A.AAA".as_bstr()), None).unwrap();
 
         let error = plan.header(&input, true).unwrap_err().to_string();
 
         assert!(error.contains("collides"), "got: {error}");
+    }
+
+    #[test]
+    fn test_observe_rejects_two_values_that_would_share_a_read_group() {
+        let mut plan = Plan::default();
+        plan.observe(Some(b"A".as_bstr()), Some("B.C".into()))
+            .unwrap();
+
+        let error = plan
+            .observe(Some(b"A.B".as_bstr()), Some("C".into()))
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("share the read group A.B.C"),
+            "got: {error}"
+        );
     }
 }
