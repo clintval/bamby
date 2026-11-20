@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read  # to check out the repository and its history
-    outputs:
-      on_main: ${{ steps.contains_tag.outputs.retval }}
     steps:
       - name: Stop following the remote HEAD so the tag check sees every branch
         run: git config --global remote.origin.followRemoteHEAD never
@@ -38,6 +36,14 @@ jobs:
           reference: "main"
           tag: "${{ github.ref_name }}"
 
+      - name: Fail when the tag is not on the main branch
+        if: ${{ steps.contains_tag.outputs.retval != 'true' }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "::error::The tag $TAG is not on the main branch"
+          exit 1
+
       - name: Check that the tag matches the package version
         env:
           TAG: ${{ github.ref_name }}
@@ -51,7 +57,6 @@ jobs:
   tests:
     name: tests
     needs: on-main-branch-check
-    if: ${{ needs.on-main-branch-check.outputs.on_main == 'true' }}
     permissions:
       checks: write  # for the Coveralls upload in the called workflow
       contents: read  # to check out the repository in the called workflow
@@ -81,6 +86,15 @@ jobs:
           args: --latest --verbose
         env:
           GITHUB_REPO: ${{ github.repository }}
+
+      - name: Fail when the changelog is empty
+        env:
+          NOTES: ${{ steps.git-cliff.outputs.content }}
+        run: |
+          if [ -z "$(printf %s "$NOTES" | tr -d '[:space:]')" ]; then
+            echo "::error::git-cliff found no changes for this release"
+            exit 1
+          fi
 
   make-github-release:
     name: make-github-release
