@@ -1,4 +1,5 @@
 //! Group BAM records into read groups by the value of a tag.
+use std::ffi::OsString;
 use std::num::NonZero;
 use std::path::PathBuf;
 use std::process;
@@ -339,6 +340,19 @@ fn decorate_help(cmd: clap::Command, color: bool) -> clap::Command {
     })
 }
 
+/// The command line as text a SAM header can hold, escaping every character
+/// that is not printable ASCII.
+fn command_line(args: impl Iterator<Item = OsString>) -> String {
+    let args: Vec<String> = args.map(|arg| arg.to_string_lossy().into_owned()).collect();
+    args.join(" ")
+        .chars()
+        .map(|c| match c {
+            ' '..='~' => c.to_string(),
+            _ => c.escape_default().to_string(),
+        })
+        .collect()
+}
+
 /// Main binary entrypoint.
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<(), Error> {
@@ -367,7 +381,7 @@ fn main() -> Result<(), Error> {
         untagged_value: cli.untagged_value,
         threads: cli.threads,
         compression_level: cli.compression_level,
-        command_line: std::env::args().collect::<Vec<_>>().join(" "),
+        command_line: command_line(std::env::args_os()),
     };
 
     match run(&args) {
@@ -430,5 +444,14 @@ mod tests {
     fn test_style_help_text_is_plain_without_color() {
         let text = "Use `CB`.\n  ID    the value\n";
         assert_eq!(style_help_text(text, false), "Use CB.\n  ID    the value\n");
+    }
+
+    #[test]
+    fn test_command_line_escapes_what_a_sam_header_cannot_hold() {
+        let args = ["bamby", "-o", "données.bam", "a\tb"].map(OsString::from);
+        assert_eq!(
+            command_line(args.into_iter()),
+            r"bamby -o donn\u{e9}es.bam a\tb"
+        );
     }
 }
